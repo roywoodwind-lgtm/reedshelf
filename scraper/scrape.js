@@ -190,13 +190,13 @@ async function finemusic() {
   return out;
 }
 
+// Oz Winds, Fine Music and Music Place refuse automated requests (HTTP 403 / bot check),
+// so they are not collected. ozwinds() and finemusic() are kept for if that changes.
 const STORES = {
   turra: { name: "Turramurra Music", site: "https://www.turramusic.com.au", run: () => shopify("turra", "https://www.turramusic.com.au", "band-and-orchestral-woodwind-accessories") },
   better: { name: "Better Music", site: "https://www.bettermusic.com.au", run: () => shopify("better", "https://www.bettermusic.com.au", "woodwind-reeds") },
   mannys: { name: "Manny's Music", site: "https://www.mannys.com.au", run: mannys },
-  ozwinds: { name: "Oz Winds", site: "https://www.ozwinds.com.au", run: ozwinds },
   saxwood: { name: "Sax & Woodwind", site: "https://www.saxandwoodwind.com.au", run: saxwood },
-  finemusic: { name: "Fine Music", site: "https://finemusiconline.com.au", run: finemusic },
 };
 
 (async () => {
