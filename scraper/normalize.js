@@ -10,7 +10,7 @@
     { id: "vd-trad", name: "Vandoren Traditional", brand: "Vandoren", re: /vandoren/i },
   ];
   // Things that are not the reeds we compare
-  const EXCLUDE = /grease|guard|case|ligature|mouthpiece|cap\b|patch|cushion|holder|clipper|cutter|resurfacer|swab|strap|mix|sampler|oboe|bassoon|juno|java|v16|\bzz\b|\bv10\b|royal|select|la\s*voz|hemke|plasticover|frederick|venn|evolution\s*mix|grand\s*concert|rigotti|legere|synthetic|contrabass|alto\s*clarinet|tee\s*shirt|t-shirt|poster|book/i;
+  const EXCLUDE = /grease|guard|case|ligature|mouthpiece|cap\b|patch|cushion|holder|clipper|cutter|resurfacer|swab|strap|mix|sampler|oboe|bassoon|juno|java|jazz|v16|\bzz\b|\bv10\b|royal|select|la\s*voz|hemke|plasticover|frederick|venn|evolution\s*mix|grand\s*concert|rigotti|legere|synthetic|contrabass|alto\s*clarinet|tee\s*shirt|t-shirt|poster|book/i;
 
   function line(title) {
     if (EXCLUDE.test(title)) return null;
@@ -45,9 +45,10 @@
 
   function strength(s) {
     if (!s) return null;
-    s = String(s).replace(/56\s*rue\s*lepic|v\s*[.•·-]?\s*(12|21)\b/gi, " ");
-    const m = s.match(/(?:strength|size|grade|str\.?|no\.?|#)\s*:?\s*([1-5](?:\.[05])?)(?!\d)\s*(\+|plus)?/i) ||
-      s.match(/(?:^|[^\d.])([1-5](?:\.[05])?)(?![\d])\s*(\+|plus)?(?!\s*(?:pack|pk|box|reeds|mm|x\b))/i);
+    s = String(s).replace(/56\s*rue\s*lepic|v\s*[.•·-]?\s*(12|21)\b/gi, " ")
+      .replace(/(?:box|pack|card|pk|set)\s*of\s*\d+|(?<![\d.])\d+\s*-?\s*(?:pack|pk|pce|pcs|reeds?|ct|count)\b|\(\d+\)|\d+\s*per\s*box/gi, " ");
+    const m = s.match(/(?:strength|size|grade|str\.)\s*:?\s*([1-5](?:\.[05])?)(?![\d.])\s*(\+|plus)?/i) ||
+      s.match(/(?:^|[^\d.\w])([1-5](?:\.[05])?)(?![\d.])\s*(\+|plus)?/i);
     if (!m) return null;
     let v = parseFloat(m[1]);
     if (v < 1 || v > 5) return null;
@@ -64,6 +65,7 @@
     const st = strength(variantTitle) || strength(title.replace(/box\s*of\s*\d+|\d+\s*-?\s*(pack|pk|reeds?)/gi, ""));
     const p = typeof price === "string" ? parseFloat(price.replace(/[^\d.]/g, "")) : price;
     if (!p || !n) return null;
+    if (p / n < 1.5 || p / n > 30) return null; // implausible per-reed price: pack size misread
     return {
       store, line: l.id, lineName: l.name, instrument: inst, strength: st,
       pack: n, price: +p.toFixed(2), unit: +(p / n).toFixed(2),
