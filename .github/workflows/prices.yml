@@ -1,0 +1,37 @@
+name: Daily reed prices (8am Sydney)
+on:
+  schedule:
+    - cron: "50 20 * * *"   # 7:50am AEDT / 6:50am AEST
+    - cron: "50 21 * * *"   # 8:50am AEDT / 7:50am AEST
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency: prices
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Run once per Sydney morning
+        id: gate
+        run: |
+          H=$(TZ=Australia/Sydney date +%H); TODAY=$(TZ=Australia/Sydney date +%F)
+          LAST=$(node -e "try{const u=require('./prices.json').updated;console.log(new Date(u).toLocaleDateString('en-CA',{timeZone:'Australia/Sydney'}))}catch(e){console.log('')}")
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then echo "go=1" >> $GITHUB_OUTPUT
+          elif [ "$H" -ge 7 ] && [ "$H" -le 10 ] && [ "$LAST" != "$TODAY" ]; then echo "go=1" >> $GITHUB_OUTPUT
+          else echo "Skip: hour=$H last=$LAST"; fi
+      - name: Collect prices
+        if: steps.gate.outputs.go == '1'
+        run: node scraper/scrape.js
+      - name: Commit prices.json
+        if: steps.gate.outputs.go == '1'
+        run: |
+          git config user.name "reedshelf-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add prices.json
+          git commit -m "Daily prices $(TZ=Australia/Sydney date +'%F %H:%M')" || echo "No change"
+          git push
