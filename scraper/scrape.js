@@ -41,7 +41,7 @@ async function shopify(store, base, collections) {
   const out = [], seen = new Set();
   for (const collection of [].concat(collections)) {
     for (let p = 1; p < 10; p++) {
-      const j = await get(`${base}/collections/${collection}/products.json?limit=250&page=${p}`, "json");
+      const j = await get(`${base}/collections/${collection}/products.json?limit=250&page=${p}&currency=AUD&country=AU`, "json"); // force AUD: overseas IPs get USD otherwise
       if (!j || !j.products || !j.products.length) break;
       for (const x of j.products) {
         if (seen.has(x.handle)) continue;
@@ -79,6 +79,7 @@ async function woo(store, base) {
         const name = decode(x.name);
         if (!/reed/i.test(name)) continue;
         const pr = x.prices || {};
+        if (pr.currency_code && pr.currency_code !== "AUD") continue;
         const price = +pr.price / Math.pow(10, pr.currency_minor_unit ?? 2);
         const sts = (x.variations || []).map((v) => (v.attributes || []).map((a) => String(a.value).replace(/^size-?/i, "").replace(/^(\d)-(\d)$/, "$1.$2")).join(" "));
         const o = offer(store, name, sts.length ? sts : [name], price, x.permalink, x.is_in_stock !== false);
@@ -105,6 +106,7 @@ async function mannys() {
     const p = jsonLds(h).find((j) => j["@type"] === "Product");
     if (!p || !p.offers) continue;
     const of = Array.isArray(p.offers) ? p.offers[0] : p.offers;
+    if (of.priceCurrency && of.priceCurrency !== "AUD") continue;
     const brand = (p.brand && p.brand.name) || "";
     const title = decode(/vandoren|rico|reserve/i.test(p.name) ? p.name : brand + " " + p.name);
     const o = offer("mannys", title.replace(/Royal by D'Addario/i, "Rico Royal"), [title], of.price, u, /InStock/i.test(of.availability || ""));
