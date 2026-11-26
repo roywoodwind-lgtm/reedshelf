@@ -20,7 +20,7 @@ async function get(url, type = "text") {
   }
   return null;
 }
-const decode = (s) => (s || "").replace(/&amp;/g, "&").replace(/&#39;|&#x27;|&rsquo;|’/g, "'").replace(/&quot;/g, '"').replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&nbsp;/g, " ").replace(/\s+/g, " ").trim();
+const decode = (s) => (s || "").replace(/&#(\d+);/g, (m, n) => String.fromCharCode(+n)).replace(/&amp;/g, "&").replace(/&#39;|&#x27;|&rsquo;|’/g, "'").replace(/&quot;/g, '"').replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&nbsp;/g, " ").replace(/\s+/g, " ").trim();
 const strip = (s) => decode((s || "").replace(/<script[\s\S]*?<\/script>|<style[\s\S]*?<\/style>/gi, " ").replace(/<[^>]+>/g, " "));
 const jsonLds = (html) => [...(html || "").matchAll(/<script[^>]*application\/ld\+json[^>]*>([\s\S]*?)<\/script>/gi)].map((m) => { try { return JSON.parse(m[1]); } catch { return null; } }).filter(Boolean).flatMap((j) => (j["@graph"] ? j["@graph"] : [j]));
 const brandish = /vandoren|rico|reserve|d.?addario/i;
@@ -37,24 +37,54 @@ function offer(store, title, strengths, price, url, inStock, packHint) {
 }
 
 // ---------- Shopify (products.json) ----------
-async function shopify(store, base, collection) {
-  const out = [];
-  for (let p = 1; p < 10; p++) {
-    const j = await get(`${base}/collections/${collection}/products.json?limit=250&page=${p}`, "json");
-    if (!j || !j.products || !j.products.length) break;
-    for (const x of j.products) {
-      if (!brandish.test(x.title + " " + x.vendor)) continue;
-      const url = `${base}/products/${x.handle}`;
-      const groups = {}; // price|stock -> strengths
-      for (const v of x.variants) {
-        const k = v.price + "|" + (v.available ? 1 : 0);
-        (groups[k] = groups[k] || []).push(v.title === "Default Title" ? x.title : v.title);
+async function shopify(store, base, collections) {
+  const out = [], seen = new Set();
+  for (const collection of [].concat(collections)) {
+    for (let p = 1; p < 10; p++) {
+      const j = await get(`${base}/collections/${collection}/products.json?limit=250&page=${p}`, "json");
+      if (!j || !j.products || !j.products.length) break;
+      for (const x of j.products) {
+        if (seen.has(x.handle)) continue;
+        seen.add(x.handle);
+        if (!brandish.test(x.title + " " + x.vendor)) continue;
+        // some stores leave the brand out of the title ("Alto Saxophone Reeds Box of 10", vendor RICO)
+        const title = /vandoren|rico|reserve/i.test(x.title) ? x.title : (x.vendor || "") + " " + x.title;
+        const url = `${base}/products/${x.handle}`;
+        const groups = {}; // price|stock -> strengths
+        for (const v of x.variants) {
+          const k = v.price + "|" + (v.available ? 1 : 0);
+          (groups[k] = groups[k] || []).push(v.title === "Default Title" ? title : v.title);
+        }
+        for (const [k, sts] of Object.entries(groups)) {
+          const [price, av] = k.split("|");
+          const o = offer(store, title, sts, price, url, av === "1");
+          if (o) out.push(o);
+        }
       }
-      for (const [k, sts] of Object.entries(groups)) {
-        const [price, av] = k.split("|");
-        const o = offer(store, x.title, sts, price, url, av === "1");
+    }
+  }
+  return out;
+}
+
+// ---------- WooCommerce (public Store API) ----------
+async function woo(store, base) {
+  const out = [], seen = new Set();
+  for (const q of ["vandoren", "rico", "reserve"]) {
+    for (let p = 1; p < 8; p++) {
+      const j = await get(`${base}/wp-json/wc/store/v1/products?per_page=100&page=${p}&search=${q}`, "json");
+      if (!Array.isArray(j) || !j.length) break;
+      for (const x of j) {
+        if (seen.has(x.id)) continue;
+        seen.add(x.id);
+        const name = decode(x.name);
+        if (!/reed/i.test(name)) continue;
+        const pr = x.prices || {};
+        const price = +pr.price / Math.pow(10, pr.currency_minor_unit ?? 2);
+        const sts = (x.variations || []).map((v) => (v.attributes || []).map((a) => String(a.value).replace(/^size-?/i, "").replace(/^(\d)-(\d)$/, "$1.$2")).join(" "));
+        const o = offer(store, name, sts.length ? sts : [name], price, x.permalink, x.is_in_stock !== false);
         if (o) out.push(o);
       }
+      if (j.length < 100) break;
     }
   }
   return out;
@@ -193,10 +223,17 @@ async function finemusic() {
 // Oz Winds, Fine Music and Music Place refuse automated requests (HTTP 403 / bot check),
 // so they are not collected. ozwinds() and finemusic() are kept for if that changes.
 const STORES = {
-  turra: { name: "Turramurra Music", site: "https://www.turramusic.com.au", run: () => shopify("turra", "https://www.turramusic.com.au", "band-and-orchestral-woodwind-accessories") },
-  better: { name: "Better Music", site: "https://www.bettermusic.com.au", run: () => shopify("better", "https://www.bettermusic.com.au", "woodwind-reeds") },
-  mannys: { name: "Manny's Music", site: "https://www.mannys.com.au", run: mannys },
-  saxwood: { name: "Sax & Woodwind", site: "https://www.saxandwoodwind.com.au", run: saxwood },
+  turra: { name: "Turramurra Music", state: "NSW", site: "https://www.turramusic.com.au", run: () => shopify("turra", "https://www.turramusic.com.au", "band-and-orchestral-woodwind-accessories") },
+  better: { name: "Better Music", state: "ACT", site: "https://www.bettermusic.com.au", run: () => shopify("better", "https://www.bettermusic.com.au", "woodwind-reeds") },
+  mannys: { name: "Manny's Music", state: "VIC", site: "https://www.mannys.com.au", run: mannys },
+  saxwood: { name: "Sax & Woodwind", state: "NSW", site: "https://www.saxandwoodwind.com.au", run: saxwood },
+  engadine: { name: "Engadine Music", state: "NSW", site: "https://engadinemusic.com.au", run: () => shopify("engadine", "https://engadinemusic.com.au", ["reeds", "vandoren-reeds"]) },
+  sieffs: { name: "Sieffs Music", state: "NSW", site: "https://sieffsmusic.com.au", run: () => shopify("sieffs", "https://sieffsmusic.com.au", ["clarinet-reeds", "saxophone-reeds"]) },
+  junction: { name: "Music Junction", state: "VIC", site: "https://www.musicjunction.com.au", run: () => shopify("junction", "https://www.musicjunction.com.au", "reeds") },
+  perth: { name: "Perth Music Shop", state: "WA", site: "https://perthmusicshop.com.au", run: () => shopify("perth", "https://perthmusicshop.com.au", "woodwind-reeds") },
+  vivace: { name: "Vivace Music", state: "QLD", site: "https://www.vivacemusic.com.au", run: () => woo("vivace", "https://www.vivacemusic.com.au") },
+  angkor: { name: "Angkor Music", state: "VIC", site: "https://angkormusic.com.au", run: () => woo("angkor", "https://angkormusic.com.au") },
+  woods: { name: "Woods Music", state: "", site: "https://woodsmusic.com.au", run: () => woo("woods", "https://woodsmusic.com.au") },
 };
 
 (async () => {
@@ -217,7 +254,7 @@ const STORES = {
     offers.push(...list);
   }
   const stores = {};
-  for (const [id, s] of Object.entries(STORES)) stores[id] = { name: s.name, site: s.site, ...status[id] };
+  for (const [id, s] of Object.entries(STORES)) stores[id] = { name: s.name, state: s.state, site: s.site, ...status[id] };
   const result = { updated: new Date().toISOString(), stores, offers };
   fs.writeFileSync("prices.json", JSON.stringify(result));
   log("Total offers", offers.length);
