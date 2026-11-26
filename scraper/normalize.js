@@ -10,7 +10,7 @@
     { id: "vd-trad", name: "Vandoren Traditional", brand: "Vandoren", re: /vandoren/i },
   ];
   // Things that are not the reeds we compare
-  const EXCLUDE = /grease|guard|case|ligature|mouthpiece|cap\b|patch|cushion|holder|clipper|cutter|resurfacer|swab|strap|mix|sampler|oboe|bassoon|juno|java|jazz|v16|\bzz\b|\bv10\b|royal|select|la\s*voz|hemke|plasticover|frederick|venn|evolution\s*mix|grand\s*concert|rigotti|legere|synthetic|\bvk\d|contrabass|alto\s*clarinet|tee\s*shirt|t-shirt|poster|book/i;
+  const EXCLUDE = /grease|guard|case|ligature|mouthpiece|cap\b|patch|cushion|holder|clipper|cutter|resurfacer|swab|strap|mix|sampler|oboe|bassoon|juno|java|jazz|v16|\bzz\b|\bv10\b|royal|select|la\s*voz|hemke|plasticover|frederick|venn|evolution\s*mix|grand\s*concert|rigotti|legere|synthetic|\bvk\d|mitchell|lurie|sopranino|contrabass|alto\s*clarinet|tee\s*shirt|t-shirt|poster|book/i;
 
   function line(title) {
     if (EXCLUDE.test(title)) return null;
